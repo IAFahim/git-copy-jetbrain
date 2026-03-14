@@ -67,18 +67,6 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
 
                 group("Copy Options") {
                     row {
-                        checkBox("Preserve Git History")
-                            .bindSelected(settings::preserveGitHistory)
-                            .comment("Preserve git history during copy operations")
-                    }
-
-                    row {
-                        checkBox("Recursive Copy")
-                            .bindSelected(settings::recursiveCopy)
-                            .comment("Copy directories recursively")
-                    }
-
-                    row {
                         checkBox("Verbose Output")
                             .bindSelected(settings::verboseOutput)
                             .comment("Show detailed output during copy operations")
@@ -93,18 +81,25 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                     row {
                         checkBox("Enable Keyboard Shortcuts")
                             .bindSelected(settings::enableKeyboardShortcut)
-                            .comment("Enable default keyboard shortcuts (Ctrl+Shift+C)")
+                            .comment("Enable default keyboard shortcuts (Ctrl+Shift+G)")
                     }
                 }
 
                 separator()
 
                 group("Advanced Options") {
-                    row("Custom Arguments:") {
+                    row("Default Filters (optional):") {
                         textField()
-                            .bindText(settings::customArguments)
+                            .bindText(settings::defaultFilters)
                             .align(AlignX.FILL)
-                            .comment("Additional command-line arguments (space-separated)")
+                            .comment("File types to include: web, backend, js, py, etc.")
+                    }
+
+                    row("Default Excludes (optional):") {
+                        textField()
+                            .bindText(settings::defaultExcludes)
+                            .align(AlignX.FILL)
+                            .comment("Folders to exclude: -node_modules, -tests, etc.")
                     }
 
                     row {
@@ -127,12 +122,17 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                         // Check status asynchronously
                         Thread {
                             val service = project.service<GitCopyService>()
-                            val isAvailable = service.isGitCopyAvailable(settings)
-                            val status = if (isAvailable) {
-                                val path = service.findGitCopyExecutable(settings)
-                                "<html><font color='green'>✓ Found at: $path</font></html>"
+                            val detectedVariant = service.detectGitCopyVariant(settings)
+                            val status = if (detectedVariant != null) {
+                                val variantName = when (detectedVariant) {
+                                    "standalone" -> "git-copy (standalone)"
+                                    "subcommand" -> "git copy (subcommand)"
+                                    "custom" -> "custom path"
+                                    else -> "unknown"
+                                }
+                                "<html><font color='green'>✓ Found: $variantName</font></html>"
                             } else {
-                                "<html><font color='red'>✗ Not found - Install or configure path</font></html>"
+                                "<html><font color='red'>✗ Not found - Install git-copy</font></html>"
                             }
 
                             // Update UI on EDT
@@ -162,19 +162,39 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
 
     private fun testConfiguration() {
         val service = project.service<GitCopyService>()
-        val isAvailable = service.isGitCopyAvailable(settings)
+        val detectedVariant = service.detectGitCopyVariant(settings)
 
-        if (isAvailable) {
-            val path = service.findGitCopyExecutable(settings)
-            showInfoMessage("Configuration test passed!\ngit-copy found at: $path")
+        if (detectedVariant != null) {
+            val variantName = when (detectedVariant) {
+                "standalone" -> "git-copy (standalone command)"
+                "subcommand" -> "git copy (git subcommand)"
+                "custom" -> "custom path: ${settings.customGitCopyPath}"
+                else -> "unknown variant"
+            }
+            showInfoMessage("Configuration test passed!\n\nDetected: $variantName\n\ngit-copy is ready to use.")
         } else {
-            showErrorMessage("Configuration test failed!\ngit-copy not found. Please install or specify the correct path.")
+            showErrorMessage("Configuration test failed!\n\ngit-copy not found.\n\nPlease install git-copy:\ncurl -fsSL https://raw.githubusercontent.com/IAFahim/git-copy/main/install.sh | bash")
         }
     }
 
     private fun showInstallationHelp() {
-        val service = project.service<GitCopyService>()
-        val helpText = service.getInstallationInstructions()
+        val helpText = """
+            git-copy not found - Installation Instructions
+
+            git-copy copies code from your Git repository to clipboard,
+            perfect for pasting into ChatGPT, Claude, or other LLMs.
+
+            Installation (Linux/macOS):
+            curl -fsSL https://raw.githubusercontent.com/IAFahim/git-copy/main/install.sh | bash
+
+            Installation (Windows PowerShell):
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            iwr -useb https://raw.githubusercontent.com/IAFahim/git-copy/main/install.ps1 | iex
+
+            After installation, restart your IDE and the plugin will detect it automatically.
+
+            For more info: https://github.com/IAFahim/git-copy
+        """.trimIndent()
 
         com.intellij.openapi.ui.Messages.showInfoMessage(
             project,

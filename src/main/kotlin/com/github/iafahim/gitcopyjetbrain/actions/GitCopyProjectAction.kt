@@ -38,6 +38,7 @@ class GitCopyProjectAction : AnAction("Copy Project to Clipboard", "Copy entire 
 
     override fun actionPerformed(e: AnActionEvent) {
         // Just call the main GitCopyAction
-        GitCopyAction().actionPerformed(e)
+        val action = GitCopyAction()
+        action.actionPerformed(e)
     }
 }

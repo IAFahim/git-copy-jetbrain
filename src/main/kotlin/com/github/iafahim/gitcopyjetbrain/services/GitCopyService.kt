@@ -7,7 +7,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.github.iafahim.gitcopyjetbrain.settings.GitCopySettings
-import com.github.iafahim.gitcopyjetbrain.ui.CopyOptions
+import com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptions
 import java.util.UUID
 import java.io.BufferedReader
 import java.io.File
@@ -29,54 +29,14 @@ class GitCopyService(private val project: Project) : Disposable {
             return project.service()
         }
 
-        private const val GIT_COPY_COMMAND = "git"
-        private const val GIT_COPY_SUBCOMMAND = "copy"
+        private const val GIT_COPY_STANDALONE = "git-copy"
+        private const val GIT_COPY_SUBCOMMAND_GIT = "git"
+        private const val GIT_COPY_SUBCOMMAND_COPY = "copy"
         private const val DEFAULT_INSTALLATION_URL = "https://github.com/IAFahim/git-copy"
     }
 
-    /**
-     * Execute git-copy on the specified file or folder.
-     * @param virtualFile The file or folder to copy
-     * @param indicator Progress indicator for the operation
-     * @param settings Plugin settings
-     * @return true if the operation succeeded, false otherwise
-     */
-    fun executeGitCopy(
-        virtualFile: com.intellij.openapi.vfs.VirtualFile,
-        indicator: ProgressIndicator,
-        settings: GitCopySettings
-    ): Boolean {
-        return executeGitCopyWithOptions(virtualFile, null, CopyOptions(), indicator, settings)
-    }
-
-    /**
-     * Execute git-copy on the specified file or folder with custom options.
-     * @param virtualFile The file or folder to copy
-     * @param destinationPath Optional destination path (if null, uses git-copy default)
-     * @param options Copy options
-     * @param indicator Progress indicator for the operation
-     * @param settings Plugin settings
-     * @return true if the operation succeeded, false otherwise
-     */
-    fun executeGitCopyWithOptions(
-        virtualFile: com.intellij.openapi.vfs.VirtualFile,
-        destinationPath: String?,
-        options: CopyOptions,
-        indicator: ProgressIndicator,
-        settings: GitCopySettings
-    ): Boolean {
-        val gitCopyPath = findGitCopyExecutable(settings)
-        if (gitCopyPath == null) {
-            LOG.error("git-copy executable not found")
-            return false
-        }
-
-        val filePath = virtualFile.canonicalPath ?: return false
-
-        try {
-            // Build the command based on settings and options
-            val command = buildGitCopyCommandWithOptions(gitCopyPath, filePath, destinationPath, options)
-            LOG.info("Executing git-copy command: ${command.joinToString(" ")}")
+    // Note: The old file copying methods have been removed since git-copy is a clipboard tool
+    // If file copying functionality is needed, it should be implemented separately
 
             // Execute the command
             val processBuilder = ProcessBuilder(command)
@@ -130,68 +90,60 @@ class GitCopyService(private val project: Project) : Disposable {
     }
 
     /**
-     * Find the git-copy executable based on settings and system path.
-     * git-copy is actually a git subcommand, so we check if git is available and git-copy is installed.
+     * Detect which git-copy variant is available.
+     * Returns "standalone" for `git-copy` command, "subcommand" for `git copy`, or null if not found.
+     * Respects forceVariant setting if user has specified a preference.
      */
-    fun findGitCopyExecutable(settings: GitCopySettings): String? {
+    fun detectGitCopyVariant(settings: GitCopySettings): String? {
+        // If user has forced a specific variant, respect that choice
+        if (settings.forceVariant.isNotEmpty()) {
+            when (settings.forceVariant.lowercase()) {
+                "standalone" -> {
+                    if (verifyStandaloneCommand()) return "standalone"
+                    LOG.warn("User forced standalone variant but it's not available")
+                }
+                "subcommand" -> {
+                    if (verifySubCommand()) return "subcommand"
+                    LOG.warn("User forced subcommand variant but it's not available")
+                }
+                else -> LOG.warn("Unknown forceVariant value: ${settings.forceVariant}")
+            }
+        }
         // First, check if user specified a custom path
         if (settings.customGitCopyPath.isNotEmpty()) {
             val customPath = File(settings.customGitCopyPath)
             if (customPath.exists() && customPath.canExecute()) {
-                return settings.customGitCopyPath
-            } else {
-                LOG.warn("Custom git path specified but not found or not executable: ${settings.customGitCopyPath}")
+                LOG.info("Using custom git-copy path: ${settings.customGitCopyPath}")
+                return "custom"
             }
         }
 
-        // Try to find git in system PATH
-        try {
-            val process = ProcessBuilder(listOf("which", GIT_COPY_COMMAND)).start()
-            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                reader.readLine()
-            }
-
-            if (process.waitFor() == 0 && output != null && output.isNotEmpty()) {
-                LOG.info("Found git at: $output")
-
-                // Check if git-copy subcommand is available
-                val gitCopyProcess = ProcessBuilder(listOf(GIT_COPY_COMMAND, GIT_COPY_SUBCOMMAND, "--help"))
-                    .redirectErrorStream(true)
-                    .start()
-
-                val gitCopyOutput = BufferedReader(InputStreamReader(gitCopyProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                    reader.readLine()
-                }
-
-                if (gitCopyProcess.waitFor() == 0 || (gitCopyOutput != null && gitCopyOutput.contains("git-copy"))) {
-                    LOG.info("git-copy subcommand is available")
-                    return output
-                } else {
-                    LOG.warn("git is found but git-copy subcommand is not installed")
-                    return null
-                }
-            }
-        } catch (e: Exception) {
-            LOG.debug("Could not find git in system PATH", e)
+        // Try standalone git-copy command first (Linux)
+        if (verifyStandaloneCommand()) {
+            return "standalone"
         }
 
-        // Try common installation locations
-        val commonPaths = listOf(
-            "/usr/local/bin/git",
-            "/usr/bin/git",
-            "${System.getProperty("user.home")}/.local/bin/git",
-            "/usr/local/git/bin/git"
-        )
-
-        for (path in commonPaths) {
-            val file = File(path)
-            if (file.exists() && file.canExecute()) {
-                LOG.info("Found git at common path: $path")
-                return path
-            }
+        // Try git copy subcommand
+        if (verifySubCommand()) {
+            return "subcommand"
         }
 
+        LOG.error("No git-copy variant found (neither standalone nor subcommand)")
         return null
+    }
+
+    /**
+     * Find the git-copy executable based on settings and system path.
+     * Supports both standalone `git-copy` and git subcommand `git copy`.
+     */
+    fun findGitCopyExecutable(settings: GitCopySettings): String? {
+        val variant = detectGitCopyVariant(settings)
+        return when (variant) {
+            "standalone" -> GIT_COPY_STANDALONE
+            "subcommand" -> GIT_COPY_SUBCOMMAND_GIT
+            "custom" -> settings.customGitCopyPath
+            else -> null
+        }
     }
 
     /**
@@ -213,6 +165,13 @@ class GitCopyService(private val project: Project) : Disposable {
             return false
         }
 
+        // Check which variant to use
+        val variant = detectGitCopyVariant(settings)
+        if (variant == null) {
+            LOG.error("git-copy not found (neither standalone nor subcommand)")
+            return false
+        }
+
         // Check if current directory is a git repository
         val projectBasePath = project.basePath
         if (projectBasePath == null) {
@@ -227,9 +186,9 @@ class GitCopyService(private val project: Project) : Disposable {
         }
 
         try {
-            // Build the git copy command
-            val command = buildGitCopyCommand(gitPath, options)
-            LOG.info("Executing git-copy command: ${command.joinToString(" ")}")
+            // Build the git copy command based on detected variant
+            val command = buildGitCopyCommand(variant, options, settings)
+            LOG.info("Executing git-copy command (variant: $variant): ${command.joinToString(" ")}")
 
             // Execute the command from project directory
             val process = ProcessBuilder(command)
@@ -279,22 +238,67 @@ class GitCopyService(private val project: Project) : Disposable {
 
     /**
      * Build the git copy command with options.
-     * git copy [filters] [excludes]
+     * Supports both standalone `git-copy` and git subcommand `git copy`.
      */
-    private fun buildGitCopyCommand(gitPath: String, options: com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptions): List<String> {
-        val command = mutableListOf(gitPath, GIT_COPY_SUBCOMMAND)
+    private fun buildGitCopyCommand(variant: String, options: com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptions, settings: GitCopySettings): List<String> {
+        return when (variant) {
+            "standalone" -> {
+                // git-copy web backend -node_modules
+                val command = mutableListOf(GIT_COPY_STANDALONE)
 
-        // Add filters if provided
-        if (options.filters.isNotEmpty()) {
-            command.addAll(options.filters.split(" ").filter { it.isNotEmpty() })
+                // Add filters if provided
+                if (options.filters.isNotEmpty()) {
+                    command.addAll(options.filters.split(" ").filter { it.isNotEmpty() })
+                }
+
+                // Add excludes if provided
+                if (options.excludes.isNotEmpty()) {
+                    command.addAll(options.excludes.split(" ").filter { it.isNotEmpty() })
+                }
+
+                command
+            }
+
+            "subcommand" -> {
+                // git copy web backend -node_modules
+                val command = mutableListOf(GIT_COPY_SUBCOMMAND_GIT, GIT_COPY_SUBCOMMAND_COPY)
+
+                // Add filters if provided
+                if (options.filters.isNotEmpty()) {
+                    command.addAll(options.filters.split(" ").filter { it.isNotEmpty() })
+                }
+
+                // Add excludes if provided
+                if (options.excludes.isNotEmpty()) {
+                    command.addAll(options.excludes.split(" ").filter { it.isNotEmpty() })
+                }
+
+                command
+            }
+
+            "custom" -> {
+                // Use custom path as standalone command
+                val customPath = settings.customGitCopyPath
+                val command = mutableListOf(customPath)
+
+                // Add filters if provided
+                if (options.filters.isNotEmpty()) {
+                    command.addAll(options.filters.split(" ").filter { it.isNotEmpty() })
+                }
+
+                // Add excludes if provided
+                if (options.excludes.isNotEmpty()) {
+                    command.addAll(options.excludes.split(" ").filter { it.isNotEmpty() })
+                }
+
+                command
+            }
+
+            else -> {
+                LOG.error("Unknown git-copy variant: $variant")
+                mutableListOf()
+            }
         }
-
-        // Add excludes if provided
-        if (options.excludes.isNotEmpty()) {
-            command.addAll(options.excludes.split(" ").filter { it.isNotEmpty() })
-        }
-
-        return command
     }
 
     /**
@@ -315,48 +319,67 @@ class GitCopyService(private val project: Project) : Disposable {
         """.trimIndent()
     }
 
-    /**
-     * Build the git-copy command with appropriate arguments.
-     */
-    private fun buildGitCopyCommand(executablePath: String, filePath: String, settings: GitCopySettings): List<String> {
-        return buildGitCopyCommandWithOptions(executablePath, filePath, null, CopyOptions(
-            preserveGitHistory = settings.preserveGitHistory,
-            recursive = settings.recursiveCopy,
-            verbose = settings.verboseOutput,
-            customArguments = settings.customArguments
-        ))
-    }
-
-    /**
-     * Build the git-copy command with custom options.
-     * git-copy is actually a git subcommand: git copy [filters] [excludes]
-     */
-    private fun buildGitCopyCommandWithOptions(
-        executablePath: String,
-        filePath: String,
-        destinationPath: String?,
-        options: CopyOptions
-    ): List<String> {
-        val command = mutableListOf(executablePath, GIT_COPY_SUBCOMMAND)
-
-        // Add custom arguments first (these are the filters/excludes for git-copy)
-        if (options.customArguments.isNotEmpty()) {
-            command.addAll(options.customArguments.split(" ").filter { it.isNotEmpty() })
-        }
-
-        // Add verbose output if requested (git-copy doesn't have verbose, but we can try)
-        if (options.verbose) {
-            // git-copy doesn't have a verbose flag, but we'll add it in case it's added later
-            // command.add("--verbose")
-        }
-
-        // Note: git-copy doesn't need source path - it works on current git repository
-        // And there's no destination - it copies to clipboard
-
-        return command
-    }
-
     override fun dispose() {
         // Cleanup if needed
+    }
+
+    /**
+     * Verify if standalone git-copy command is available.
+     */
+    private fun verifyStandaloneCommand(): Boolean {
+        return try {
+            val process = ProcessBuilder(listOf("which", GIT_COPY_STANDALONE)).start()
+            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                reader.readLine()
+            }
+
+            if (process.waitFor() == 0 && output != null && output.isNotEmpty()) {
+                // Test if git-copy actually works
+                val testProcess = ProcessBuilder(listOf(GIT_COPY_STANDALONE, "--help"))
+                    .redirectErrorStream(true)
+                    .start()
+
+                val testOutput = BufferedReader(InputStreamReader(testProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                    reader.readLine()
+                }
+
+                testProcess.waitFor() == 0 || (testOutput != null && testOutput.contains("git-copy"))
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            LOG.debug("git-copy standalone command not found", e)
+            false
+        }
+    }
+
+    /**
+     * Verify if git copy subcommand is available.
+     */
+    private fun verifySubCommand(): Boolean {
+        return try {
+            val process = ProcessBuilder(listOf("which", GIT_COPY_SUBCOMMAND_GIT)).start()
+            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                reader.readLine()
+            }
+
+            if (process.waitFor() == 0 && output != null && output.isNotEmpty()) {
+                // Test if git copy subcommand works
+                val testProcess = ProcessBuilder(listOf(GIT_COPY_SUBCOMMAND_GIT, GIT_COPY_SUBCOMMAND_COPY, "--help"))
+                    .redirectErrorStream(true)
+                    .start()
+
+                val testOutput = BufferedReader(InputStreamReader(testProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                    reader.readLine()
+                }
+
+                testProcess.waitFor() == 0 || (testOutput != null && (testOutput.contains("git-copy") || testOutput.contains("copy")))
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            LOG.debug("git copy subcommand not found", e)
+            false
+        }
     }
 }

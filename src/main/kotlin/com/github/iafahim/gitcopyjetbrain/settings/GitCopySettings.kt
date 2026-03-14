@@ -23,6 +23,7 @@ class GitCopySettings : PersistentStateComponent<GitCopySettings.State> {
 
     class State {
         var customGitCopyPath: String = ""
+        var forceVariant: String = "" // "standalone", "subcommand", or "auto"
         var defaultFilters: String = ""
         var defaultExcludes: String = ""
         var verboseOutput: Boolean = false
@@ -34,6 +35,10 @@ class GitCopySettings : PersistentStateComponent<GitCopySettings.State> {
     var customGitCopyPath: String
         get() = state.customGitCopyPath
         set(value) { state.customGitCopyPath = value }
+
+    var forceVariant: String
+        get() = state.forceVariant
+        set(value) { state.forceVariant = value }
 
     var defaultFilters: String
         get() = state.defaultFilters
