@@ -9,19 +9,17 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <actions>
-        <!-- File/Folder Context Menu Actions -->
+        <!-- Main git-copy Action -->
         <action id="GitCopyAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyAction"
-                text="Copy with git-copy" description="Copy file/folder using git-copy">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="EditSource"/>
-            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="EditorCopy"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="control shift C"/>
+                text="Copy to Clipboard with git-copy" description="Copy project code to clipboard using git-copy">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="control shift G"/>
         </action>
 
-        <!-- Project Actions -->
+        <!-- Quick Project Action -->
         <action id="GitCopyProjectAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyProjectAction"
-                text="Copy Project with git-copy" description="Copy entire project using git-copy">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="GitCopyAction"/>
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
+                text="Copy Project to Clipboard" description="Copy entire project code to clipboard using git-copy">
+            <add-to-group group-id="ToolsMenu" anchor="before" relative-to-action="GitCopyAction"/>
         </action>
     </actions>
 

@@ -23,34 +23,29 @@ class GitCopySettings : PersistentStateComponent<GitCopySettings.State> {
 
     class State {
         var customGitCopyPath: String = ""
-        var preserveGitHistory: Boolean = true
-        var recursiveCopy: Boolean = true
+        var defaultFilters: String = ""
+        var defaultExcludes: String = ""
         var verboseOutput: Boolean = false
-        var customArguments: String = ""
         var showNotifications: Boolean = true
         var enableKeyboardShortcut: Boolean = true
-        var lastUsedDestination: String = ""
+        var lastUsedOptions: String = ""
     }
 
     var customGitCopyPath: String
         get() = state.customGitCopyPath
         set(value) { state.customGitCopyPath = value }
 
-    var preserveGitHistory: Boolean
-        get() = state.preserveGitHistory
-        set(value) { state.preserveGitHistory = value }
+    var defaultFilters: String
+        get() = state.defaultFilters
+        set(value) { state.defaultFilters = value }
 
-    var recursiveCopy: Boolean
-        get() = state.recursiveCopy
-        set(value) { state.recursiveCopy = value }
+    var defaultExcludes: String
+        get() = state.defaultExcludes
+        set(value) { state.defaultExcludes = value }
 
     var verboseOutput: Boolean
         get() = state.verboseOutput
         set(value) { state.verboseOutput = value }
-
-    var customArguments: String
-        get() = state.customArguments
-        set(value) { state.customArguments = value }
 
     var showNotifications: Boolean
         get() = state.showNotifications
@@ -60,9 +55,9 @@ class GitCopySettings : PersistentStateComponent<GitCopySettings.State> {
         get() = state.enableKeyboardShortcut
         set(value) { state.enableKeyboardShortcut = value }
 
-    var lastUsedDestination: String
-        get() = state.lastUsedDestination
-        set(value) { state.lastUsedDestination = value }
+    var lastUsedOptions: String
+        get() = state.lastUsedOptions
+        set(value) { state.lastUsedOptions = value }
 
     override fun getState(): State {
         return state

@@ -29,7 +29,8 @@ class GitCopyService(private val project: Project) : Disposable {
             return project.service()
         }
 
-        private const val GIT_COPY_COMMAND = "git-copy"
+        private const val GIT_COPY_COMMAND = "git"
+        private const val GIT_COPY_SUBCOMMAND = "copy"
         private const val DEFAULT_INSTALLATION_URL = "https://github.com/IAFahim/git-copy"
     }
 
@@ -130,6 +131,7 @@ class GitCopyService(private val project: Project) : Disposable {
 
     /**
      * Find the git-copy executable based on settings and system path.
+     * git-copy is actually a git subcommand, so we check if git is available and git-copy is installed.
      */
     fun findGitCopyExecutable(settings: GitCopySettings): String? {
         // First, check if user specified a custom path
@@ -138,11 +140,11 @@ class GitCopyService(private val project: Project) : Disposable {
             if (customPath.exists() && customPath.canExecute()) {
                 return settings.customGitCopyPath
             } else {
-                LOG.warn("Custom git-copy path specified but not found or not executable: ${settings.customGitCopyPath}")
+                LOG.warn("Custom git path specified but not found or not executable: ${settings.customGitCopyPath}")
             }
         }
 
-        // Try to find git-copy in system PATH
+        // Try to find git in system PATH
         try {
             val process = ProcessBuilder(listOf("which", GIT_COPY_COMMAND)).start()
             val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
@@ -150,25 +152,41 @@ class GitCopyService(private val project: Project) : Disposable {
             }
 
             if (process.waitFor() == 0 && output != null && output.isNotEmpty()) {
-                LOG.info("Found git-copy at: $output")
-                return output
+                LOG.info("Found git at: $output")
+
+                // Check if git-copy subcommand is available
+                val gitCopyProcess = ProcessBuilder(listOf(GIT_COPY_COMMAND, GIT_COPY_SUBCOMMAND, "--help"))
+                    .redirectErrorStream(true)
+                    .start()
+
+                val gitCopyOutput = BufferedReader(InputStreamReader(gitCopyProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                    reader.readLine()
+                }
+
+                if (gitCopyProcess.waitFor() == 0 || (gitCopyOutput != null && gitCopyOutput.contains("git-copy"))) {
+                    LOG.info("git-copy subcommand is available")
+                    return output
+                } else {
+                    LOG.warn("git is found but git-copy subcommand is not installed")
+                    return null
+                }
             }
         } catch (e: Exception) {
-            LOG.debug("Could not find git-copy in system PATH", e)
+            LOG.debug("Could not find git in system PATH", e)
         }
 
         // Try common installation locations
         val commonPaths = listOf(
-            "/usr/local/bin/git-copy",
-            "/usr/bin/git-copy",
-            "${System.getProperty("user.home")}/.local/bin/git-copy",
-            "${System.getProperty("user.home")}/bin/git-copy"
+            "/usr/local/bin/git",
+            "/usr/bin/git",
+            "${System.getProperty("user.home")}/.local/bin/git",
+            "/usr/local/git/bin/git"
         )
 
         for (path in commonPaths) {
             val file = File(path)
             if (file.exists() && file.canExecute()) {
-                LOG.info("Found git-copy at common path: $path")
+                LOG.info("Found git at common path: $path")
                 return path
             }
         }
@@ -177,10 +195,106 @@ class GitCopyService(private val project: Project) : Disposable {
     }
 
     /**
-     * Check if git-copy is available on the system.
+     * Execute git-copy to copy project code to clipboard.
+     * @param options Git-copy options (filters, excludes, verbose)
+     * @param indicator Progress indicator
+     * @param settings Plugin settings
+     * @return true if operation succeeded, false otherwise
      */
-    fun isGitCopyAvailable(settings: GitCopySettings): Boolean {
-        return findGitCopyExecutable(settings) != null
+    fun executeGitCopyForClipboard(
+        project: Project,
+        options: com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptions,
+        indicator: ProgressIndicator,
+        settings: GitCopySettings
+    ): Boolean {
+        val gitPath = findGitCopyExecutable(settings)
+        if (gitPath == null) {
+            LOG.error("git not found or git-copy subcommand not installed")
+            return false
+        }
+
+        // Check if current directory is a git repository
+        val projectBasePath = project.basePath
+        if (projectBasePath == null) {
+            LOG.error("Project base path not found")
+            return false
+        }
+
+        val gitDir = java.io.File(projectBasePath, ".git")
+        if (!gitDir.exists()) {
+            LOG.error("Current directory is not a git repository")
+            return false
+        }
+
+        try {
+            // Build the git copy command
+            val command = buildGitCopyCommand(gitPath, options)
+            LOG.info("Executing git-copy command: ${command.joinToString(" ")}")
+
+            // Execute the command from project directory
+            val process = ProcessBuilder(command)
+                .directory(java.io.File(projectBasePath))
+                .redirectErrorStream(true)
+                .start()
+
+            // Monitor the process output
+            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                val lines = mutableListOf<String>()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    lines.add(line!!)
+                    indicator.text2 = line
+
+                    // Check if user cancelled the operation
+                    if (indicator.isCanceled) {
+                        process.destroyForcibly()
+                        return false
+                    }
+                }
+                lines.joinToString("\n")
+            }
+
+            val exitCode = process.waitFor()
+
+            if (exitCode == 0) {
+                LOG.info("git-copy completed successfully")
+                if (output.isNotEmpty()) {
+                    LOG.info("git-copy output: $output")
+                }
+                return true
+            } else {
+                LOG.error("git-copy failed with exit code $exitCode: $output")
+                return false
+            }
+
+        } catch (e: InterruptedException) {
+            LOG.error("git-copy operation interrupted", e)
+            Thread.currentThread().interrupt()
+            return false
+        } catch (e: IOException) {
+            LOG.error("git-copy operation failed", e)
+            return false
+        }
+    }
+
+    /**
+     * Build the git copy command with options.
+     * git copy [filters] [excludes]
+     */
+    private fun buildGitCopyCommand(gitPath: String, options: com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptions): List<String> {
+        val command = mutableListOf(gitPath, GIT_COPY_SUBCOMMAND)
+
+        // Add filters if provided
+        if (options.filters.isNotEmpty()) {
+            command.addAll(options.filters.split(" ").filter { it.isNotEmpty() })
+        }
+
+        // Add excludes if provided
+        if (options.excludes.isNotEmpty()) {
+            command.addAll(options.excludes.split(" ").filter { it.isNotEmpty() })
+        }
+
+        return command
     }
 
     /**
@@ -215,6 +329,7 @@ class GitCopyService(private val project: Project) : Disposable {
 
     /**
      * Build the git-copy command with custom options.
+     * git-copy is actually a git subcommand: git copy [filters] [excludes]
      */
     private fun buildGitCopyCommandWithOptions(
         executablePath: String,
@@ -222,33 +337,21 @@ class GitCopyService(private val project: Project) : Disposable {
         destinationPath: String?,
         options: CopyOptions
     ): List<String> {
-        val command = mutableListOf(executablePath)
+        val command = mutableListOf(executablePath, GIT_COPY_SUBCOMMAND)
 
-        // Add options first (before source and destination)
-        if (options.preserveGitHistory) {
-            command.add("--git")
-        }
-
-        if (options.recursive) {
-            command.add("--recursive")
-        }
-
-        if (options.verbose) {
-            command.add("--verbose")
-        }
-
-        // Add custom arguments if specified
+        // Add custom arguments first (these are the filters/excludes for git-copy)
         if (options.customArguments.isNotEmpty()) {
             command.addAll(options.customArguments.split(" ").filter { it.isNotEmpty() })
         }
 
-        // Add source file/folder path
-        command.add(filePath)
-
-        // Add destination path if provided
-        if (destinationPath != null && destinationPath.isNotEmpty()) {
-            command.add(destinationPath)
+        // Add verbose output if requested (git-copy doesn't have verbose, but we can try)
+        if (options.verbose) {
+            // git-copy doesn't have a verbose flag, but we'll add it in case it's added later
+            // command.add("--verbose")
         }
+
+        // Note: git-copy doesn't need source path - it works on current git repository
+        // And there's no destination - it copies to clipboard
 
         return command
     }

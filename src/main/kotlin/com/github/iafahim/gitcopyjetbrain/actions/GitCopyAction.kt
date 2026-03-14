@@ -11,20 +11,15 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
-import com.intellij.openapi.vfs.VirtualFile
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyService
-import com.github.iafahim.gitcopyjetbrain.services.GitCopyHistoryService
-import com.github.iafahim.gitcopyjetbrain.services.GitCopyOperation
 import com.github.iafahim.gitcopyjetbrain.settings.GitCopySettings
-import com.github.iafahim.gitcopyjetbrain.ui.GitCopyDestinationDialog
-import com.github.iafahim.gitcopyjetbrain.ui.CopyOptions
-import java.util.Date
+import com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptionsDialog
 
 /**
- * Enhanced Action to execute git-copy on selected files or folders in the IDE.
- * Features: Destination dialog, history tracking, better error handling.
+ * Action to execute git-copy on the current project.
+ * git-copy copies code to clipboard for LLMs (ChatGPT, Claude, etc.)
  */
-class GitCopyAction : AnAction("Copy with git-copy", "Copy selected file/folder using git-copy", null) {
+class GitCopyAction : AnAction("Copy to Clipboard with git-copy", "Copy project code to clipboard using git-copy", null) {
 
     companion object {
         private val LOG = Logger.getInstance(GitCopyAction::class.java)
@@ -33,37 +28,27 @@ class GitCopyAction : AnAction("Copy with git-copy", "Copy selected file/folder 
 
     override fun update(e: AnActionEvent) {
         val project = e.getData(CommonDataKeys.PROJECT)
-        val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
-
-        // Only enable action when a file/folder is selected in a project
-        e.presentation.isEnabledAndVisible = project != null && virtualFile != null && virtualFile.isValid
-
-        // Update text based on selection
-        if (virtualFile != null && virtualFile.isDirectory) {
-            e.presentation.text = "Copy Folder with git-copy"
-        } else {
-            e.presentation.text = "Copy File with git-copy"
-        }
+        e.presentation.isEnabledAndVisible = project != null
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.getData(CommonDataKeys.PROJECT) ?: return
-        val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
 
         val settings = GitCopySettings.getInstance(project)
-        val sourcePath = virtualFile.canonicalPath ?: return
 
-        // Show destination dialog
-        val dialog = GitCopyDestinationDialog(project, sourcePath, settings)
+        // Show git-copy options dialog with defaults from settings
+        val dialog = GitCopyOptionsDialog(project, settings)
         if (!dialog.showAndGet()) {
             return // User cancelled
         }
 
-        val destinationPath = dialog.destinationPath
-        val copyOptions = dialog.copyOptions
+        val gitCopyOptions = dialog.gitCopyOptions
+
+        // Save the last used options
+        settings.lastUsedOptions = "${gitCopyOptions.filters} ${gitCopyOptions.excludes}".trim()
 
         // Execute git-copy in background with progress indicator
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Copying with git-copy", true) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Copying to clipboard with git-copy", true) {
             private var success = false
             private var errorMessage: String? = null
             private var duration: Long = 0L
@@ -72,20 +57,17 @@ class GitCopyAction : AnAction("Copy with git-copy", "Copy selected file/folder 
             override fun run(indicator: ProgressIndicator) {
                 try {
                     startTime = System.currentTimeMillis()
-                    indicator.text = "Copying ${virtualFile.name} with git-copy..."
-                    indicator.text2 = "Source: $sourcePath"
+                    indicator.text = "Copying project code to clipboard with git-copy..."
                     indicator.isIndeterminate = false
                     indicator.fraction = 0.0
 
                     val service = project.service<GitCopyService>()
-                    success = service.executeGitCopyWithOptions(
-                        virtualFile, destinationPath, copyOptions, indicator, settings
-                    )
+                    success = service.executeGitCopyForClipboard(project, gitCopyOptions, indicator, settings)
 
                     duration = System.currentTimeMillis() - startTime
 
                     if (!success) {
-                        errorMessage = "git-copy operation failed. Check settings and logs."
+                        errorMessage = "git-copy operation failed. Make sure git-copy is installed."
                     }
                 } catch (e: Exception) {
                     LOG.error("git-copy operation failed", e)
@@ -98,51 +80,36 @@ class GitCopyAction : AnAction("Copy with git-copy", "Copy selected file/folder 
             override fun onSuccess() {
                 super.onSuccess()
 
-                // Track operation in history
-                val historyService = project.service<GitCopyHistoryService>()
-                val operation = GitCopyOperation(
-                    sourcePath = sourcePath,
-                    destinationPath = destinationPath,
-                    successful = success,
-                    duration = duration,
-                    errorMessage = errorMessage,
-                    options = GitCopyOperation.CopyOptions(
-                        preserveGitHistory = copyOptions.preserveGitHistory,
-                        recursive = copyOptions.recursive,
-                        verbose = copyOptions.verbose
-                    )
-                )
-                historyService.addOperation(operation)
-
                 // Show notification
                 if (success) {
-                    val message = buildSuccessMessage(virtualFile.name, destinationPath, duration)
+                    val message = buildSuccessMessage(duration)
                     showNotification(project, message, NotificationType.INFORMATION)
                 } else {
-                    val message = buildErrorMessage(errorMessage ?: "Unknown error", sourcePath)
+                    val message = buildErrorMessage(errorMessage ?: "Unknown error")
                     showNotification(project, message, NotificationType.ERROR)
                 }
             }
 
-            private fun buildSuccessMessage(fileName: String, destPath: String, durationMs: Long): String {
+            private fun buildSuccessMessage(durationMs: Long): String {
                 val durationSec = durationMs / 1000.0
                 return """
-                    <html><b>✓ git-copy completed successfully!</b></html>
+                    <html><b>✓ Code copied to clipboard successfully!</b></html>
                     <br><br>
-                    <b>File:</b> $fileName<br>
-                    <b>Destination:</b> $destPath<br>
-                    <b>Duration:</b> ${String.format("%.2f", durationSec)}s
+                    <b>Duration:</b> ${String.format("%.2f", durationSec)}s<br>
+                    <b>Action:</b> Ready to paste into ChatGPT, Claude, or other LLMs
                 """.trimIndent()
             }
 
-            private fun buildErrorMessage(error: String, sourcePath: String): String {
+            private fun buildErrorMessage(error: String): String {
                 return """
                     <html><b>✗ git-copy operation failed</b></html>
                     <br><br>
-                    <b>Source:</b> $sourcePath<br>
                     <b>Error:</b> $error<br>
                     <br>
-                    Please check your git-copy installation and settings.
+                    Please ensure:<br>
+                    • git-copy is installed (<code>git copy --help</code>)<br>
+                    • Current directory is a git repository<br>
+                    • Clipboard is accessible
                 """.trimIndent()
             }
 
