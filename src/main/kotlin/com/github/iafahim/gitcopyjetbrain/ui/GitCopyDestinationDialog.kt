@@ -31,7 +31,7 @@ class GitCopyDestinationDialog(
     private val customArgsField = JBTextField(settings.customArguments)
 
     val destinationPath: String
-        get() = File(destinationField.text, nameField.text).absolutePath
+        get() = File(destinationField.text, nameField.text).canonicalPath
 
     val copyOptions: CopyOptions
         get() = CopyOptions(
@@ -128,7 +128,7 @@ class GitCopyDestinationDialog(
 
         val file = FileChooser.chooseFile(descriptor, project, null)
         if (file != null) {
-            destinationField.text = file.absolutePath
+            destinationField.text = file.canonicalPath
         }
     }
 

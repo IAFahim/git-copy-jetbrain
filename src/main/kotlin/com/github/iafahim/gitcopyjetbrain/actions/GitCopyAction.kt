@@ -77,9 +77,9 @@ class GitCopyAction : AnAction("Copy with git-copy", "Copy selected file/folder 
                     indicator.isIndeterminate = false
                     indicator.fraction = 0.0
 
-                    val service = GitCopyService.getInstance()
+                    val service = project.service<GitCopyService>()
                     success = service.executeGitCopyWithOptions(
-                        project, virtualFile, destinationPath, copyOptions, indicator, settings
+                        virtualFile, destinationPath, copyOptions, indicator, settings
                     )
 
                     duration = System.currentTimeMillis() - startTime

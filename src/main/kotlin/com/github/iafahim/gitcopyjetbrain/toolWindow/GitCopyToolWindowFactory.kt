@@ -3,7 +3,6 @@ package com.github.iafahim.gitcopyjetbrain.toolWindow
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.SimpleTextAttributes
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.components.JBList
@@ -12,6 +11,7 @@ import com.intellij.ui.content.ContentFactory
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyHistoryService
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyOperation
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.Font
 import java.text.SimpleDateFormat

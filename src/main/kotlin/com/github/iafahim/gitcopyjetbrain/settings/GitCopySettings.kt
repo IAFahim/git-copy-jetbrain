@@ -1,6 +1,6 @@
 package com.github.iafahim.gitcopyjetbrain.settings
 
-import com.intellij.openapi.components.SimplePersistentComponent
+import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
@@ -11,13 +11,15 @@ import com.intellij.openapi.project.Project
  * Stores configuration preferences and options.
  */
 @State(name = "GitCopySettings", storages = [Storage("git-copy.xml")])
-class GitCopySettings : SimplePersistentComponent<GitCopySettings.State>(State()) {
+class GitCopySettings : PersistentStateComponent<GitCopySettings.State> {
 
     companion object {
         fun getInstance(project: Project): GitCopySettings {
             return project.service()
         }
     }
+
+    private var state = State()
 
     class State {
         var customGitCopyPath: String = ""
@@ -30,12 +32,43 @@ class GitCopySettings : SimplePersistentComponent<GitCopySettings.State>(State()
         var lastUsedDestination: String = ""
     }
 
-    var customGitCopyPath: String by state::customGitCopyPath
-    var preserveGitHistory: Boolean by state::preserveGitHistory
-    var recursiveCopy: Boolean by state::recursiveCopy
-    var verboseOutput: Boolean by state::verboseOutput
-    var customArguments: String by state::customArguments
-    var showNotifications: Boolean by state::showNotifications
-    var enableKeyboardShortcut: Boolean by state::enableKeyboardShortcut
-    var lastUsedDestination: String by state::lastUsedDestination
+    var customGitCopyPath: String
+        get() = state.customGitCopyPath
+        set(value) { state.customGitCopyPath = value }
+
+    var preserveGitHistory: Boolean
+        get() = state.preserveGitHistory
+        set(value) { state.preserveGitHistory = value }
+
+    var recursiveCopy: Boolean
+        get() = state.recursiveCopy
+        set(value) { state.recursiveCopy = value }
+
+    var verboseOutput: Boolean
+        get() = state.verboseOutput
+        set(value) { state.verboseOutput = value }
+
+    var customArguments: String
+        get() = state.customArguments
+        set(value) { state.customArguments = value }
+
+    var showNotifications: Boolean
+        get() = state.showNotifications
+        set(value) { state.showNotifications = value }
+
+    var enableKeyboardShortcut: Boolean
+        get() = state.enableKeyboardShortcut
+        set(value) { state.enableKeyboardShortcut = value }
+
+    var lastUsedDestination: String
+        get() = state.lastUsedDestination
+        set(value) { state.lastUsedDestination = value }
+
+    override fun getState(): State {
+        return state
+    }
+
+    override fun loadState(state: State) {
+        this.state = state
+    }
 }

@@ -30,7 +30,7 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                 row("git-copy Executable Path:") {
                     val pathField = textField()
                         .bindText(settings::customGitCopyPath)
-                        .horizontalAlign(HorizontalAlign.FILL)
+                        .align(AlignX.FILL)
                         .component
 
                     button("Browse") {
@@ -103,7 +103,7 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                     row("Custom Arguments:") {
                         textField()
                             .bindText(settings::customArguments)
-                            .horizontalAlign(HorizontalAlign.FILL)
+                            .align(AlignX.FILL)
                             .comment("Additional command-line arguments (space-separated)")
                     }
 

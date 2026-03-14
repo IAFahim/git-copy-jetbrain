@@ -13,7 +13,7 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyService
 import com.github.iafahim.gitcopyjetbrain.settings.GitCopySettings
-import java.io.IOException
+import com.intellij.openapi.components.service
 
 /**
  * Action to execute git-copy on the entire project.
@@ -24,6 +24,11 @@ class GitCopyProjectAction : AnAction("Copy Project with git-copy", "Copy entire
     companion object {
         private val LOG = Logger.getInstance(GitCopyProjectAction::class.java)
         const val ID = "GitCopyProjectAction"
+
+        private fun showNotificationStatic(project: com.intellij.openapi.project.Project, message: String, type: NotificationType) {
+            val notification = Notification("GitCopy", "git-copy Project", message, type)
+            Notifications.Bus.notify(notification, project)
+        }
     }
 
     override fun update(e: AnActionEvent) {
@@ -37,7 +42,7 @@ class GitCopyProjectAction : AnAction("Copy Project with git-copy", "Copy entire
         // Get the project base directory
         val projectBasePath = project.basePath
         if (projectBasePath == null) {
-            showNotification(project, "Project path not found", NotificationType.ERROR)
+            showNotificationStatic(project, "Project path not found", NotificationType.ERROR)
             return
         }
 
@@ -45,7 +50,7 @@ class GitCopyProjectAction : AnAction("Copy Project with git-copy", "Copy entire
             .findFileByUrl("file://$projectBasePath")
 
         if (projectFile == null || !projectFile.isValid) {
-            showNotification(project, "Project directory not found or invalid", NotificationType.ERROR)
+            showNotificationStatic(project, "Project directory not found or invalid", NotificationType.ERROR)
             return
         }
 
@@ -61,8 +66,8 @@ class GitCopyProjectAction : AnAction("Copy Project with git-copy", "Copy entire
                     indicator.text = "Copying project ${project.name} with git-copy..."
                     indicator.isIndeterminate = false
 
-                    val service = GitCopyService.getInstance()
-                    success = service.executeGitCopy(project, projectFile, indicator, settings)
+                    val service = project.service<GitCopyService>()
+                    success = service.executeGitCopy(projectFile, indicator, settings)
 
                     if (!success) {
                         errorMessage = "Project git-copy operation failed. Check settings and logs."
@@ -77,15 +82,10 @@ class GitCopyProjectAction : AnAction("Copy Project with git-copy", "Copy entire
             override fun onSuccess() {
                 super.onSuccess()
                 if (success) {
-                    showNotification(project, "Project copied with git-copy successfully", NotificationType.INFORMATION)
+                    showNotificationStatic(project, "Project copied with git-copy successfully", NotificationType.INFORMATION)
                 } else {
-                    showNotification(project, errorMessage ?: "Project git-copy operation failed", NotificationType.ERROR)
+                    showNotificationStatic(project, errorMessage ?: "Project git-copy operation failed", NotificationType.ERROR)
                 }
-            }
-
-            private fun showNotification(project: com.intellij.openapi.project.Project, message: String, type: NotificationType) {
-                val notification = Notification("GitCopy", "git-copy Project", message, type)
-                Notifications.Bus.notify(notification, project)
             }
         })
     }

@@ -7,6 +7,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import java.util.Date
+import java.util.UUID
 
 /**
  * Service to track and manage git-copy operation history.
