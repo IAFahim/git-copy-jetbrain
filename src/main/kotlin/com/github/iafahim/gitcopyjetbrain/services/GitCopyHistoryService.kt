@@ -128,8 +128,8 @@ data class GitCopyOperation(
     val options: CopyOptions = CopyOptions()
 ) {
     data class CopyOptions(
-        val preserveGitHistory: Boolean = false,
-        val recursive: Boolean = false,
+        val filters: String = "",
+        val excludes: String = "",
         val verbose: Boolean = false
     )
 }

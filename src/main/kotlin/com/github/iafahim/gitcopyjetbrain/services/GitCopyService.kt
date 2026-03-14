@@ -13,6 +13,8 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.nio.charset.StandardCharsets
 
 /**
@@ -33,60 +35,6 @@ class GitCopyService(private val project: Project) : Disposable {
         private const val GIT_COPY_SUBCOMMAND_GIT = "git"
         private const val GIT_COPY_SUBCOMMAND_COPY = "copy"
         private const val DEFAULT_INSTALLATION_URL = "https://github.com/IAFahim/git-copy"
-    }
-
-    // Note: The old file copying methods have been removed since git-copy is a clipboard tool
-    // If file copying functionality is needed, it should be implemented separately
-
-            // Execute the command
-            val processBuilder = ProcessBuilder(command)
-                .redirectErrorStream(true)
-
-            // Set working directory if we have a parent directory
-            virtualFile.parent?.canonicalPath?.let {
-                processBuilder.directory(File(it))
-            }
-
-            val process = processBuilder.start()
-
-            // Monitor the process output
-            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                val lines = mutableListOf<String>()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    lines.add(line!!)
-                    indicator.text2 = line
-
-                    // Check if user cancelled the operation
-                    if (indicator.isCanceled) {
-                        process.destroyForcibly()
-                        return false
-                    }
-                }
-                lines.joinToString("\n")
-            }
-
-            val exitCode = process.waitFor()
-
-            if (exitCode == 0) {
-                LOG.info("git-copy completed successfully")
-                if (output.isNotEmpty()) {
-                    LOG.info("git-copy output: $output")
-                }
-                return true
-            } else {
-                LOG.error("git-copy failed with exit code $exitCode: $output")
-                return false
-            }
-
-        } catch (e: InterruptedException) {
-            LOG.error("git-copy operation interrupted", e)
-            Thread.currentThread().interrupt()
-            return false
-        } catch (e: IOException) {
-            LOG.error("git-copy operation failed", e)
-            return false
-        }
     }
 
     /**
@@ -324,29 +272,35 @@ class GitCopyService(private val project: Project) : Disposable {
     }
 
     /**
-     * Verify if standalone git-copy command is available.
+     * Verify if standalone git-copy command is available (cross-platform).
      */
     private fun verifyStandaloneCommand(): Boolean {
         return try {
-            val process = ProcessBuilder(listOf("which", GIT_COPY_STANDALONE)).start()
-            val output = BufferedReader(InputStreamReader(process.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                reader.readLine()
-            }
+            // Try to find git-copy in PATH
+            val path = System.getenv("PATH") ?: ""
+            val pathDirs = path.split(File.pathSeparator).map { it.trim() }
 
-            if (process.waitFor() == 0 && output != null && output.isNotEmpty()) {
-                // Test if git-copy actually works
-                val testProcess = ProcessBuilder(listOf(GIT_COPY_STANDALONE, "--help"))
-                    .redirectErrorStream(true)
-                    .start()
+            for (dir in pathDirs) {
+                if (dir.isEmpty()) continue
+                val possiblePath = File(dir, GIT_COPY_STANDALONE)
+                if (possiblePath.exists() && possiblePath.canExecute()) {
+                    // Test if git-copy actually works
+                    val testProcess = ProcessBuilder(listOf(possiblePath.absolutePath, "--help"))
+                        .redirectErrorStream(true)
+                        .start()
 
-                val testOutput = BufferedReader(InputStreamReader(testProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
-                    reader.readLine()
+                    val testOutput = BufferedReader(InputStreamReader(testProcess.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                        reader.readLine()
+                    }
+
+                    if (testProcess.waitFor() == 0 || (testOutput != null && testOutput.contains("git-copy"))) {
+                        LOG.info("Found git-copy at: ${possiblePath.absolutePath}")
+                        return true
+                    }
                 }
-
-                testProcess.waitFor() == 0 || (testOutput != null && testOutput.contains("git-copy"))
-            } else {
-                false
             }
+
+            false
         } catch (e: Exception) {
             LOG.debug("git-copy standalone command not found", e)
             false

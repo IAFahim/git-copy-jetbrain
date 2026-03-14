@@ -9,6 +9,8 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import com.intellij.ui.dsl.gridLayout.HorizontalAlign
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyService
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.util.Computable
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.swing.JComponent
@@ -119,15 +121,15 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                     row("git-copy Status:") {
                         val statusLabel = label("Checking...").component
 
-                        // Check status asynchronously
-                        Thread {
+                        // Check status asynchronously using proper IntelliJ APIs
+                        ApplicationManager.getApplication().executeOnPooledThread {
                             val service = project.service<GitCopyService>()
                             val detectedVariant = service.detectGitCopyVariant(settings)
-                            val status = if (detectedVariant != null) {
+                            val status = if (detectedVariant != "none") {
                                 val variantName = when (detectedVariant) {
                                     "standalone" -> "git-copy (standalone)"
                                     "subcommand" -> "git copy (subcommand)"
-                                    "custom" -> "custom path"
+                                    "custom" -> "custom path: ${settings.customGitCopyPath}"
                                     else -> "unknown"
                                 }
                                 "<html><font color='green'>✓ Found: $variantName</font></html>"
@@ -136,10 +138,10 @@ class GitCopyConfigurable(private val project: Project) : Configurable {
                             }
 
                             // Update UI on EDT
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                            ApplicationManager.getApplication().invokeLater {
                                 statusLabel.text = status
                             }
-                        }.start()
+                        }
                     }
                 }
             }

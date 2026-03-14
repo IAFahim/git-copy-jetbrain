@@ -12,13 +12,16 @@
         <!-- Main git-copy Action -->
         <action id="GitCopyAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyAction"
                 text="Copy to Clipboard with git-copy" description="Copy project code to clipboard using git-copy">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="EditSource"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="EditorCopy"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="control shift G"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="control shift C"/>
         </action>
 
         <!-- Quick Project Action -->
         <action id="GitCopyProjectAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyProjectAction"
                 text="Copy Project to Clipboard" description="Copy entire project code to clipboard using git-copy">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="GitCopyAction"/>
             <add-to-group group-id="ToolsMenu" anchor="before" relative-to-action="GitCopyAction"/>
         </action>
     </actions>

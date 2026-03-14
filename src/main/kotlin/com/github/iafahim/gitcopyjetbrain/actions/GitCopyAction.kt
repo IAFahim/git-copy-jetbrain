@@ -12,6 +12,8 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.github.iafahim.gitcopyjetbrain.services.GitCopyService
+import com.github.iafahim.gitcopyjetbrain.services.GitCopyHistoryService
+import com.github.iafahim.gitcopyjetbrain.services.GitCopyOperation
 import com.github.iafahim.gitcopyjetbrain.settings.GitCopySettings
 import com.github.iafahim.gitcopyjetbrain.ui.GitCopyOptionsDialog
 
@@ -28,11 +30,24 @@ class GitCopyAction : AnAction("Copy to Clipboard with git-copy", "Copy project 
 
     override fun update(e: AnActionEvent) {
         val project = e.getData(CommonDataKeys.PROJECT)
+        val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
+
+        // Enable for both project-level and file/folder selection
         e.presentation.isEnabledAndVisible = project != null
+
+        // Update text based on selection
+        if (virtualFile != null && virtualFile.isDirectory) {
+            e.presentation.text = "Copy Folder to Clipboard with git-copy"
+        } else if (virtualFile != null) {
+            e.presentation.text = "Copy File to Clipboard with git-copy"
+        } else {
+            e.presentation.text = "Copy Project to Clipboard with git-copy"
+        }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.getData(CommonDataKeys.PROJECT) ?: return
+        val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
 
         val settings = GitCopySettings.getInstance(project)
 
@@ -46,6 +61,13 @@ class GitCopyAction : AnAction("Copy to Clipboard with git-copy", "Copy project 
 
         // Save the last used options
         settings.lastUsedOptions = "${gitCopyOptions.filters} ${gitCopyOptions.excludes}".trim()
+
+        // Track what we're copying
+        val sourceDescription = if (virtualFile != null) {
+            if (virtualFile.isDirectory) "Folder: ${virtualFile.name}" else "File: ${virtualFile.name}"
+        } else {
+            "Entire Project"
+        }
 
         // Execute git-copy in background with progress indicator
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Copying to clipboard with git-copy", true) {
@@ -79,6 +101,22 @@ class GitCopyAction : AnAction("Copy to Clipboard with git-copy", "Copy project 
 
             override fun onSuccess() {
                 super.onSuccess()
+
+                // Track operation in history
+                val historyService = project.service<GitCopyHistoryService>()
+                val operation = GitCopyOperation(
+                    sourcePath = sourceDescription,
+                    destinationPath = "Clipboard",
+                    successful = success,
+                    duration = duration,
+                    errorMessage = errorMessage,
+                    options = GitCopyOperation.CopyOptions(
+                        filters = gitCopyOptions.filters,
+                        excludes = gitCopyOptions.excludes,
+                        verbose = gitCopyOptions.verbose
+                    )
+                )
+                historyService.addOperation(operation)
 
                 // Show notification
                 if (success) {
