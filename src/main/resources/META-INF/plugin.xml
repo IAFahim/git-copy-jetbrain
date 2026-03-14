@@ -8,8 +8,40 @@
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
+    <actions>
+        <!-- File/Folder Context Menu Actions -->
+        <action id="GitCopyAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyAction"
+                text="Copy with git-copy" description="Copy file/folder using git-copy">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="EditSource"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="EditorCopy"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="control shift C"/>
+        </action>
+
+        <!-- Project Actions -->
+        <action id="GitCopyProjectAction" class="com.github.iafahim.gitcopyjetbrain.actions.GitCopyProjectAction"
+                text="Copy Project with git-copy" description="Copy entire project using git-copy">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="GitCopyAction"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.iafahim.gitcopyjetbrain.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
-        <postStartupActivity implementation="com.github.iafahim.gitcopyjetbrain.startup.MyProjectActivity" />
+        <!-- Application Settings -->
+        <applicationConfigurable parentId="tools"
+                                 id="git-copy.settings"
+                                 instance="com.github.iafahim.gitcopyjetbrain.settings.GitCopyConfigurable"
+                                 displayName="git-copy"/>
+
+        <!-- Project Settings -->
+        <projectConfigurable parentId="tools"
+                             id="git-copy.project.settings"
+                             instance="com.github.iafahim.gitcopyjetbrain.settings.GitCopyConfigurable"
+                             displayName="git-copy"/>
+
+        <!-- Tool Window -->
+        <toolWindow factoryClass="com.github.iafahim.gitcopyjetbrain.toolWindow.GitCopyToolWindowFactory"
+                    id="GitCopy"
+                    anchor="right"
+                    icon="/META-INF/pluginIcon.svg"/>
     </extensions>
 </idea-plugin>
