@@ -94,7 +94,7 @@ class GitCopyService(private val project: Project) : Disposable {
      * Returns "standalone" for `git-copy` command, "subcommand" for `git copy`, or null if not found.
      * Respects forceVariant setting if user has specified a preference.
      */
-    fun detectGitCopyVariant(settings: GitCopySettings): String? {
+    fun detectGitCopyVariant(settings: GitCopySettings): String {
         // If user has forced a specific variant, respect that choice
         if (settings.forceVariant.isNotEmpty()) {
             when (settings.forceVariant.lowercase()) {
@@ -129,7 +129,7 @@ class GitCopyService(private val project: Project) : Disposable {
         }
 
         LOG.error("No git-copy variant found (neither standalone nor subcommand)")
-        return null
+        return "none"  // Return a valid string instead of null
     }
 
     /**
